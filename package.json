@@ -1,0 +1,10 @@
+{
+  "name": "vulfram-transport",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "devDependencies": {
+    "@types/bun": "^1.3.10"
+  }
+}
