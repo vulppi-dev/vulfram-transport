@@ -51,12 +51,6 @@ export const VULFRAM_DEFAULT_BINDINGS: readonly VulframBinding[] = [
   'napi',
   'wasm',
 ];
-export const VULFRAM_ENV_BASE_URL = 'VULFRAM_TRANSPORT_R2_BASE_URL';
-export const VULFRAM_ENV_CHANNEL = 'VULFRAM_TRANSPORT_CHANNEL';
-export const VULFRAM_ENV_VERSION = 'VULFRAM_TRANSPORT_VERSION';
-export const VULFRAM_ENV_OFFLINE = 'VULFRAM_TRANSPORT_OFFLINE';
-export const VULFRAM_ENV_SKIP_DOWNLOAD = 'VULFRAM_TRANSPORT_SKIP_DOWNLOAD';
-export const VULFRAM_ENV_CACHE_DIR = 'VULFRAM_TRANSPORT_CACHE_DIR';
 
 export type PlatformLoaderMap<T> = Record<
   string,
@@ -167,14 +161,19 @@ export function getArtifactFileName(
 ): string {
   if (binding === 'napi') return 'vulfram_core.node';
   if (binding === 'wasm') return 'vulfram_core_bg.wasm';
+  if (binding === 'ffi' && platform.startsWith('windows'))
+    return 'vulfram_core.dll';
+  if (binding === 'ffi' && platform.startsWith('macos'))
+    return 'vulfram_core.dylib';
+  if (binding === 'ffi') return 'vulfram_core.so';
   if (platform.startsWith('windows')) return 'vulfram_core.dll';
-  if (platform.startsWith('macos')) return 'libvulfram_core.dylib';
-  return 'libvulfram_core.so';
+  if (platform.startsWith('macos')) return 'vulfram_core.dylib';
+  return 'vulfram_core.so';
 }
 
 export function buildArtifactPath(config: {
   channel?: VulframChannel;
-  version: string;
+  artifactVersion: string;
   binding: VulframBinding;
   platform: VulframPlatform;
   artifact?: string;
@@ -187,7 +186,7 @@ export function buildArtifactPath(config: {
   return [
     prefix,
     channel,
-    config.version,
+    config.artifactVersion,
     config.binding,
     config.platform,
     artifact,
@@ -197,7 +196,7 @@ export function buildArtifactPath(config: {
 export function buildArtifactUrl(config: {
   baseUrl?: string;
   channel?: VulframChannel;
-  version: string;
+  artifactVersion: string;
   binding: VulframBinding;
   platform: VulframPlatform;
   artifact?: string;
@@ -208,4 +207,33 @@ export function buildArtifactUrl(config: {
     '',
   );
   return `${base}/${buildArtifactPath(config)}`;
+}
+
+export function parsePackageArtifactTarget(packageVersion: string): {
+  channel: VulframChannel;
+  artifactVersion: string;
+} {
+  const normalized = packageVersion.trim();
+  const match = normalized.match(
+    /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/,
+  );
+
+  if (!match) {
+    throw new Error(
+      `Invalid package version "${packageVersion}". Expected semver format "X.Y.Z[-tag]".`,
+    );
+  }
+
+  const major = match[1]!;
+  const minor = match[2]!;
+  const pre = (match[4] ?? '').toLowerCase();
+
+  let channel: VulframChannel = 'release';
+  if (pre.includes('alpha')) channel = 'alpha';
+  else if (pre.includes('beta')) channel = 'beta';
+
+  return {
+    channel,
+    artifactVersion: `v${major}.${minor}`,
+  };
 }

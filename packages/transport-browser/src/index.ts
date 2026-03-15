@@ -1,14 +1,11 @@
-import type {
-  EngineTransport,
-  EngineTransportFactory,
-  VulframChannel,
-} from '@vulfram/transport-types';
+import type { EngineTransport, EngineTransportFactory } from '@vulfram/transport-types';
 import {
-  VULFRAM_ENV_BASE_URL,
-  VULFRAM_ENV_CHANNEL,
-  VULFRAM_ENV_VERSION,
+  VULFRAM_R2_DEFAULT_BASE_URL,
   buildArtifactUrl,
+  parsePackageArtifactTarget,
 } from '@vulfram/transport-types';
+
+import pkg from '../package.json' with { type: 'json' };
 
 export type InitInput = unknown | Promise<unknown>;
 
@@ -34,26 +31,17 @@ type WasmBindings = {
   ) => number;
 };
 
+const packageVersion = (pkg as { version?: string }).version ?? '0.0.0';
+const { channel, artifactVersion } = parsePackageArtifactTarget(packageVersion);
+
 let initialized = false;
 let bindings: WasmBindings | null = null;
 
-function processEnv(name: string): string | undefined {
-  if (typeof process === 'undefined') return undefined;
-  return process.env?.[name];
-}
-
-function resolveBrowserFallbackArtifact(artifact: string): string | null {
-  const version = processEnv(VULFRAM_ENV_VERSION);
-  if (!version) return null;
-
-  const baseUrl = processEnv(VULFRAM_ENV_BASE_URL);
-  const channel =
-    (processEnv(VULFRAM_ENV_CHANNEL) as VulframChannel | undefined) ?? 'alpha';
-
+function resolveBrowserArtifactUrl(artifact: string): string {
   return buildArtifactUrl({
-    baseUrl,
+    baseUrl: VULFRAM_R2_DEFAULT_BASE_URL,
     channel,
-    version,
+    artifactVersion,
     binding: 'wasm',
     platform: 'browser',
     artifact,
@@ -69,12 +57,8 @@ async function loadBindings(): Promise<WasmBindings> {
       /* @vite-ignore */ localModulePath
     )) as WasmBindings;
     return bindings;
-  } catch (localError) {
-    const remoteModule = resolveBrowserFallbackArtifact('vulfram_core.js');
-    if (!remoteModule) {
-      throw localError;
-    }
-
+  } catch {
+    const remoteModule = resolveBrowserArtifactUrl('vulfram_core.js');
     bindings = (await import(
       /* @vite-ignore */ remoteModule
     )) as WasmBindings;
@@ -113,13 +97,7 @@ export async function initBrowserTransport(
       throw error;
     }
 
-    const fallbackWasmUrl = resolveBrowserFallbackArtifact(
-      'vulfram_core_bg.wasm',
-    );
-    if (!fallbackWasmUrl) {
-      throw error;
-    }
-
+    const fallbackWasmUrl = resolveBrowserArtifactUrl('vulfram_core_bg.wasm');
     await wasm.default(fallbackWasmUrl);
   }
 

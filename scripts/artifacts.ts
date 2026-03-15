@@ -1,22 +1,30 @@
-import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { createHash } from 'crypto';
+import { existsSync } from 'fs';
+import { mkdir, readFile, writeFile } from 'fs/promises';
+import { dirname, join } from 'path';
 import {
-  VULFRAM_ENV_BASE_URL,
-  VULFRAM_ENV_CHANNEL,
-  VULFRAM_ENV_OFFLINE,
-  VULFRAM_ENV_SKIP_DOWNLOAD,
-  VULFRAM_ENV_VERSION,
+  VULFRAM_R2_DEFAULT_BASE_URL,
   buildArtifactUrl,
   getArtifactFileName,
-  resolveNativePlatform,
+  parsePackageArtifactTarget,
   type VulframBinding,
-  type VulframChannel,
   type VulframPlatform,
 } from '../packages/transport-types/src/index';
 
+type PackageJson = {
+  name?: string;
+  version?: string;
+};
+
 const rootDir = join(import.meta.dir, '..');
+const ALL_NATIVE_PLATFORMS: Exclude<VulframPlatform, 'browser'>[] = [
+  'linux-x64',
+  'linux-arm64',
+  'macos-x64',
+  'macos-arm64',
+  'windows-x64',
+  'windows-arm64',
+];
 
 function env(name: string): string | undefined {
   return process.env?.[name];
@@ -38,6 +46,16 @@ async function ensureParent(path: string): Promise<void> {
 async function sha256File(path: string): Promise<string> {
   const data = await readFile(path);
   return createHash('sha256').update(data).digest('hex');
+}
+
+async function readPackageVersion(packageDirName: string): Promise<string> {
+  const packagePath = join(rootDir, 'packages', packageDirName, 'package.json');
+  const raw = await readFile(packagePath, 'utf8');
+  const pkg = JSON.parse(raw) as PackageJson;
+  if (!pkg.version) {
+    throw new Error(`Missing version in ${packagePath}`);
+  }
+  return pkg.version;
 }
 
 async function downloadFile(url: string, destination: string): Promise<void> {
@@ -70,16 +88,19 @@ async function ensureArtifact(config: {
   platform: VulframPlatform;
   artifact: string;
   destination: string;
-  baseUrl?: string;
-  channel: VulframChannel;
-  version: string;
+  baseUrl: string;
+  packageVersion: string;
 }): Promise<void> {
   if (existsSync(config.destination)) return;
 
+  const { channel, artifactVersion } = parsePackageArtifactTarget(
+    config.packageVersion,
+  );
+
   const url = buildArtifactUrl({
     baseUrl: config.baseUrl,
-    channel: config.channel,
-    version: config.version,
+    channel,
+    artifactVersion,
     binding: config.binding,
     platform: config.platform,
     artifact: config.artifact,
@@ -89,35 +110,21 @@ async function ensureArtifact(config: {
 }
 
 async function main(): Promise<void> {
-  if (envBool(VULFRAM_ENV_SKIP_DOWNLOAD)) {
-    console.log(
-      `[postinstall] Skipping downloads (${VULFRAM_ENV_SKIP_DOWNLOAD}=true).`,
-    );
+  if (envBool('VULFRAM_TRANSPORT_SKIP_DOWNLOAD')) {
+    console.log('[artifacts] Skipping downloads (VULFRAM_TRANSPORT_SKIP_DOWNLOAD=true).');
     return;
   }
 
-  if (envBool(VULFRAM_ENV_OFFLINE)) {
-    console.log(
-      `[postinstall] Offline mode enabled (${VULFRAM_ENV_OFFLINE}=true).`,
-    );
+  if (envBool('VULFRAM_TRANSPORT_OFFLINE')) {
+    console.log('[artifacts] Offline mode enabled (VULFRAM_TRANSPORT_OFFLINE=true).');
     return;
   }
 
-  const version = env(VULFRAM_ENV_VERSION);
-  if (!version) {
-    console.warn(
-      `[postinstall] ${VULFRAM_ENV_VERSION} is not set; skipping transport artifact download.`,
-    );
-    return;
-  }
+  const baseUrl = env('VULFRAM_TRANSPORT_R2_BASE_URL') ?? VULFRAM_R2_DEFAULT_BASE_URL;
 
-  const baseUrl = env(VULFRAM_ENV_BASE_URL);
-  const channel =
-    (env(VULFRAM_ENV_CHANNEL) as VulframChannel | undefined) ?? 'alpha';
-
-  const nativePlatform = resolveNativePlatform();
-  const ffiName = getArtifactFileName('ffi', nativePlatform);
-  const napiName = getArtifactFileName('napi', nativePlatform);
+  const bunVersion = await readPackageVersion('transport-bun');
+  const napiVersion = await readPackageVersion('transport-napi');
+  const browserVersion = await readPackageVersion('transport-browser');
 
   const browserArtifacts = [
     'vulfram_core.js',
@@ -126,40 +133,51 @@ async function main(): Promise<void> {
     'vulfram_core_bg.wasm.d.ts',
   ] as const;
 
-  const tasks: Array<Promise<void>> = [
-    ensureArtifact({
-      binding: 'ffi',
-      platform: nativePlatform,
-      artifact: ffiName,
-      destination: join(
-        rootDir,
-        'packages',
-        'transport-bun',
-        'lib',
-        nativePlatform,
-        ffiName,
-      ),
-      baseUrl,
-      channel,
-      version,
-    }),
-    ensureArtifact({
-      binding: 'napi',
-      platform: nativePlatform,
-      artifact: napiName,
-      destination: join(
-        rootDir,
-        'packages',
-        'transport-napi',
-        'lib',
-        nativePlatform,
-        napiName,
-      ),
-      baseUrl,
-      channel,
-      version,
-    }),
-    ...browserArtifacts.map((artifact) =>
+  const tasks: Array<Promise<void>> = [];
+
+  for (const platform of ALL_NATIVE_PLATFORMS) {
+    const ffiName = getArtifactFileName('ffi', platform);
+    const napiName = getArtifactFileName('napi', platform);
+
+    tasks.push(
+      ensureArtifact({
+        binding: 'ffi',
+        platform,
+        artifact: ffiName,
+        destination: join(
+          rootDir,
+          'packages',
+          'transport-bun',
+          'lib',
+          platform,
+          ffiName,
+        ),
+        baseUrl,
+        packageVersion: bunVersion,
+      }),
+    );
+
+    tasks.push(
+      ensureArtifact({
+        binding: 'napi',
+        platform,
+        artifact: napiName,
+        destination: join(
+          rootDir,
+          'packages',
+          'transport-napi',
+          'lib',
+          platform,
+          napiName,
+        ),
+        baseUrl,
+        packageVersion: napiVersion,
+      }),
+    );
+  }
+
+  for (const artifact of browserArtifacts) {
+    tasks.push(
       ensureArtifact({
         binding: 'wasm',
         platform: 'browser',
@@ -172,28 +190,26 @@ async function main(): Promise<void> {
           artifact,
         ),
         baseUrl,
-        channel,
-        version,
+        packageVersion: browserVersion,
       }),
-    ),
-  ];
+    );
+  }
 
   const results = await Promise.allSettled(tasks);
   const failures = results.filter((result) => result.status === 'rejected');
 
   if (failures.length > 0) {
-    console.warn(`[postinstall] ${failures.length} artifact download(s) failed.`);
+    console.warn(`[artifacts] ${failures.length} artifact download(s) failed.`);
     for (const failure of failures) {
       console.warn(`- ${(failure as PromiseRejectedResult).reason}`);
     }
     return;
   }
 
-  console.log(
-    `[postinstall] Transport artifacts ready for ${nativePlatform} (${channel}/${version}).`,
-  );
+  console.log('[artifacts] Transport artifacts downloaded successfully.');
 }
 
 main().catch((error) => {
-  console.warn('[postinstall] Unexpected failure:', error);
+  console.warn('[artifacts] Unexpected failure:', error);
+  process.exitCode = 1;
 });

@@ -12,7 +12,7 @@
       "name": "@vulfram/transport-browser",
       "version": "0.18.1-alpha",
       "dependencies": {
-        "@vulfram/transport-types": "^0.2.6",
+        "@vulfram/transport-types": "^0.3.0",
       },
       "devDependencies": {
         "@types/bun": "^1.3.10",
@@ -22,7 +22,7 @@
       "name": "@vulfram/transport-bun",
       "version": "0.18.1-alpha",
       "dependencies": {
-        "@vulfram/transport-types": "^0.2.6",
+        "@vulfram/transport-types": "^0.3.0",
       },
       "devDependencies": {
         "@types/bun": "^1.3.10",
@@ -32,7 +32,7 @@
       "name": "@vulfram/transport-napi",
       "version": "0.18.1-alpha",
       "dependencies": {
-        "@vulfram/transport-types": "^0.2.6",
+        "@vulfram/transport-types": "^0.3.0",
       },
       "devDependencies": {
         "@types/bun": "^1.3.10",
@@ -40,27 +40,60 @@
     },
     "packages/transport-types": {
       "name": "@vulfram/transport-types",
-      "version": "0.2.6",
+      "version": "0.3.0",
       "devDependencies": {
         "@types/bun": "^1.3.10",
       },
     },
   },
   "packages": {
-    "@types/bun": ["@types/bun@1.3.10", "", { "dependencies": { "bun-types": "1.3.10" } }, "sha512-0+rlrUrOrTSskibryHbvQkDOWRJwJZqZlxrUs1u4oOoTln8+WIXBPmAuCF35SWB2z4Zl3E84Nl/D0P7803nigQ=="],
-
-    "@types/node": ["@types/node@25.5.0", "", { "dependencies": { "undici-types": "~7.18.0" } }, "sha512-jp2P3tQMSxWugkCUKLRPVUpGaL5MVFwF8RDuSRztfwgN1wmqJeMSbKlnEtQqU8UrhTmzEmZdu2I6v2dpp7XIxw=="],
-
-    "@vulfram/transport-browser": ["@vulfram/transport-browser@workspace:packages/transport-browser"],
-
-    "@vulfram/transport-bun": ["@vulfram/transport-bun@workspace:packages/transport-bun"],
-
-    "@vulfram/transport-napi": ["@vulfram/transport-napi@workspace:packages/transport-napi"],
-
-    "@vulfram/transport-types": ["@vulfram/transport-types@workspace:packages/transport-types"],
-
-    "bun-types": ["bun-types@1.3.10", "", { "dependencies": { "@types/node": "*" } }, "sha512-tcpfCCl6XWo6nCVnpcVrxQ+9AYN1iqMIzgrSKYMB/fjLtV2eyAVEg7AxQJuCq/26R6HpKWykQXuSOq/21RYcbg=="],
-
-    "undici-types": ["undici-types@7.18.2", "", {}, "sha512-AsuCzffGHJybSaRrmr5eHr81mwJU3kjw6M+uprWvCXiNeN9SOGwQ3Jn8jb8m3Z6izVgknn1R0FTCEAP2QrLY/w=="],
+    "@types/bun": [
+      "@types/bun@1.3.10",
+      "",
+      {
+        "dependencies": {
+          "bun-types": "1.3.10"
+        }
+      },
+      "sha512-0+rlrUrOrTSskibryHbvQkDOWRJwJZqZlxrUs1u4oOoTln8+WIXBPmAuCF35SWB2z4Zl3E84Nl/D0P7803nigQ=="
+    ],
+    "@types/node": [
+      "@types/node@25.5.0",
+      "",
+      {
+        "dependencies": {
+          "undici-types": "~7.18.0"
+        }
+      },
+      "sha512-jp2P3tQMSxWugkCUKLRPVUpGaL5MVFwF8RDuSRztfwgN1wmqJeMSbKlnEtQqU8UrhTmzEmZdu2I6v2dpp7XIxw=="
+    ],
+    "@vulfram/transport-browser": [
+      "@vulfram/transport-browser@workspace:packages/transport-browser"
+    ],
+    "@vulfram/transport-bun": [
+      "@vulfram/transport-bun@workspace:packages/transport-bun"
+    ],
+    "@vulfram/transport-napi": [
+      "@vulfram/transport-napi@workspace:packages/transport-napi"
+    ],
+    "@vulfram/transport-types": [
+      "@vulfram/transport-types@workspace:packages/transport-types"
+    ],
+    "bun-types": [
+      "bun-types@1.3.10",
+      "",
+      {
+        "dependencies": {
+          "@types/node": "*"
+        }
+      },
+      "sha512-tcpfCCl6XWo6nCVnpcVrxQ+9AYN1iqMIzgrSKYMB/fjLtV2eyAVEg7AxQJuCq/26R6HpKWykQXuSOq/21RYcbg=="
+    ],
+    "undici-types": [
+      "undici-types@7.18.2",
+      "",
+      {},
+      "sha512-AsuCzffGHJybSaRrmr5eHr81mwJU3kjw6M+uprWvCXiNeN9SOGwQ3Jn8jb8m3Z6izVgknn1R0FTCEAP2QrLY/w=="
+    ],
   }
 }

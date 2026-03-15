@@ -1,35 +1,66 @@
 import { dlopen, ptr, toArrayBuffer, type Pointer } from 'bun:ffi';
 import {
-  VULFRAM_ENV_BASE_URL,
-  VULFRAM_ENV_CHANNEL,
-  VULFRAM_ENV_OFFLINE,
-  VULFRAM_ENV_VERSION,
-  VULFRAM_ENV_CACHE_DIR,
+  VULFRAM_R2_DEFAULT_BASE_URL,
   buildArtifactUrl,
   getArtifactFileName,
+  parsePackageArtifactTarget,
   resolveNativePlatform,
-  type BufferResult,
-  type VulframChannel,
+  selectPlatformLoader,
+  type PlatformLoaderMap,
 } from '@vulfram/transport-types';
-import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import type { BufferResult } from './types';
+import { createHash } from 'crypto';
+import { existsSync } from 'fs';
+import { mkdir, readFile, writeFile } from 'fs/promises';
+import { createRequire } from 'module';
+import { homedir } from 'os';
+import { dirname, join } from 'path';
 
-function env(name: string): string | undefined {
-  if (typeof process === 'undefined') return undefined;
-  return process.env?.[name];
-}
+const require = createRequire(import.meta.url);
+const pkg = require('../../package.json') as { version: string };
+const { channel, artifactVersion } = parsePackageArtifactTarget(pkg.version);
 
-function envBool(name: string): boolean {
-  const raw = env(name)?.toLowerCase();
-  return raw === '1' || raw === 'true' || raw === 'yes';
-}
+const loaders: PlatformLoaderMap<{ default: string }> = {
+  darwin: {
+    arm64: () =>
+      // @ts-expect-error
+      import('../../lib/macos-arm64/vulfram_core.dylib', {
+        with: { type: 'file' },
+      }),
+    x64: () =>
+      // @ts-expect-error
+      import('../../lib/macos-x64/vulfram_core.dylib', {
+        with: { type: 'file' },
+      }),
+  },
+  linux: {
+    arm64: () =>
+      // @ts-expect-error
+      import('../../lib/linux-arm64/vulfram_core.so', {
+        with: { type: 'file' },
+      }),
+    x64: () =>
+      // @ts-expect-error
+      import('../../lib/linux-x64/vulfram_core.so', {
+        with: { type: 'file' },
+      }),
+  },
+  win32: {
+    arm64: () =>
+      // @ts-expect-error
+      import('../../lib/windows-arm64/vulfram_core.dll', {
+        with: { type: 'file' },
+      }),
+    x64: () =>
+      // @ts-expect-error
+      import('../../lib/windows-x64/vulfram_core.dll', {
+        with: { type: 'file' },
+      }),
+  },
+};
 
 function getCacheDir(): string {
-  return env(VULFRAM_ENV_CACHE_DIR) ?? join(homedir(), '.cache', 'vulfram-transport');
+  return join(homedir(), '.cache', 'vulfram-transport');
 }
 
 async function ensureFileDir(path: string): Promise<void> {
@@ -41,11 +72,15 @@ async function sha256File(path: string): Promise<string> {
   return createHash('sha256').update(data).digest('hex');
 }
 
-async function downloadArtifactWithHash(url: string, destination: string): Promise<void> {
+async function downloadArtifactWithHash(
+  url: string,
+  destination: string,
+): Promise<void> {
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`Failed to download artifact: ${url} (${response.status})`);
   }
+
   const bytes = new Uint8Array(await response.arrayBuffer());
   await ensureFileDir(destination);
   await writeFile(destination, bytes);
@@ -64,34 +99,13 @@ async function downloadArtifactWithHash(url: string, destination: string): Promi
   }
 }
 
-async function resolveNativeLibraryPath(): Promise<string> {
+async function resolveRemoteLibraryPath(): Promise<string> {
   const platform = resolveNativePlatform();
   const filename = getArtifactFileName('ffi', platform);
-  const localPath = fileURLToPath(
-    new URL(`../../lib/${platform}/${filename}`, import.meta.url),
-  );
-
-  if (existsSync(localPath)) return localPath;
-
-  if (envBool(VULFRAM_ENV_OFFLINE)) {
-    throw new Error(
-      `FFI library not found locally (${localPath}) and offline mode is enabled.`,
-    );
-  }
-
-  const version = env(VULFRAM_ENV_VERSION);
-  if (!version) {
-    throw new Error(
-      `FFI library not found locally (${localPath}) and ${VULFRAM_ENV_VERSION} is not set for runtime fallback download.`,
-    );
-  }
-
-  const channel = (env(VULFRAM_ENV_CHANNEL) as VulframChannel | undefined) ?? 'alpha';
-  const baseUrl = env(VULFRAM_ENV_BASE_URL);
   const remoteUrl = buildArtifactUrl({
-    baseUrl,
+    baseUrl: VULFRAM_R2_DEFAULT_BASE_URL,
     channel,
-    version,
+    artifactVersion,
     binding: 'ffi',
     platform,
     artifact: filename,
@@ -101,7 +115,7 @@ async function resolveNativeLibraryPath(): Promise<string> {
     getCacheDir(),
     'runtime',
     channel,
-    version,
+    artifactVersion,
     'ffi',
     platform,
     filename,
@@ -112,6 +126,15 @@ async function resolveNativeLibraryPath(): Promise<string> {
   }
 
   return cachePath;
+}
+
+async function resolveNativeLibraryPath(): Promise<string> {
+  const importLoader = selectPlatformLoader(loaders, 'FFI');
+  try {
+    return (await importLoader()).default;
+  } catch {
+    return resolveRemoteLibraryPath();
+  }
 }
 
 const lib = await resolveNativeLibraryPath();
