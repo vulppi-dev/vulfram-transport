@@ -5,6 +5,12 @@ node_modules
 out
 dist
 *.tgz
+packages/transport-bun/lib/**
+packages/transport-napi/lib/**
+packages/transport-browser/lib/**
+!packages/transport-bun/lib/.gitkeep
+!packages/transport-napi/lib/.gitkeep
+!packages/transport-browser/lib/.gitkeep
 
 # code coverage
 coverage

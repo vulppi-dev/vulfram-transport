@@ -4,6 +4,9 @@
   "workspaces": [
     "packages/*"
   ],
+  "scripts": {
+    "artifacts": "bun scripts/artifacts.ts"
+  },
   "devDependencies": {
     "@types/bun": "^1.3.10"
   }
