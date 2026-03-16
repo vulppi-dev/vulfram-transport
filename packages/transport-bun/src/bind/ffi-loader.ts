@@ -1,24 +1,12 @@
 import { dlopen, ptr, toArrayBuffer, type Pointer } from 'bun:ffi';
 import {
-  VULFRAM_R2_DEFAULT_BASE_URL,
-  buildArtifactUrl,
+  detectRuntime,
   getArtifactFileName,
-  parsePackageArtifactTarget,
   resolveNativePlatform,
   selectPlatformLoader,
   type PlatformLoaderMap,
 } from '@vulfram/transport-types';
 import type { BufferResult } from './types';
-import { createHash } from 'crypto';
-import { existsSync } from 'fs';
-import { mkdir, readFile, writeFile } from 'fs/promises';
-import { createRequire } from 'module';
-import { homedir } from 'os';
-import { dirname, join } from 'path';
-
-const require = createRequire(import.meta.url);
-const pkg = require('../../package.json') as { version: string };
-const { channel, artifactVersion } = parsePackageArtifactTarget(pkg.version);
 
 const loaders: PlatformLoaderMap<{ default: string }> = {
   darwin: {
@@ -59,81 +47,27 @@ const loaders: PlatformLoaderMap<{ default: string }> = {
   },
 };
 
-function getCacheDir(): string {
-  return join(homedir(), '.cache', 'vulfram-transport');
-}
-
-async function ensureFileDir(path: string): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
-}
-
-async function sha256File(path: string): Promise<string> {
-  const data = await readFile(path);
-  return createHash('sha256').update(data).digest('hex');
-}
-
-async function downloadArtifactWithHash(
-  url: string,
-  destination: string,
-): Promise<void> {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to download artifact: ${url} (${response.status})`);
+function getExpectedLocalArtifact(): string {
+  try {
+    const platform = resolveNativePlatform();
+    const filename = getArtifactFileName('ffi', platform);
+    return `../../lib/${platform}/${filename}`;
+  } catch {
+    return '../../lib/<platform>/vulfram_core.<dll|dylib|so>';
   }
-
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  await ensureFileDir(destination);
-  await writeFile(destination, bytes);
-
-  const hashResponse = await fetch(`${url}.sha256`);
-  if (!hashResponse.ok) return;
-
-  const expected = (await hashResponse.text()).trim().split(/\s+/)[0] ?? '';
-  if (!expected) return;
-
-  const actual = await sha256File(destination);
-  if (actual !== expected) {
-    throw new Error(
-      `SHA256 mismatch for ${url}: expected=${expected} actual=${actual}`,
-    );
-  }
-}
-
-async function resolveRemoteLibraryPath(): Promise<string> {
-  const platform = resolveNativePlatform();
-  const filename = getArtifactFileName('ffi', platform);
-  const remoteUrl = buildArtifactUrl({
-    baseUrl: VULFRAM_R2_DEFAULT_BASE_URL,
-    channel,
-    artifactVersion,
-    binding: 'ffi',
-    platform,
-    artifact: filename,
-  });
-
-  const cachePath = join(
-    getCacheDir(),
-    'runtime',
-    channel,
-    artifactVersion,
-    'ffi',
-    platform,
-    filename,
-  );
-
-  if (!existsSync(cachePath)) {
-    await downloadArtifactWithHash(remoteUrl, cachePath);
-  }
-
-  return cachePath;
 }
 
 async function resolveNativeLibraryPath(): Promise<string> {
   const importLoader = selectPlatformLoader(loaders, 'FFI');
+
   try {
     return (await importLoader()).default;
-  } catch {
-    return resolveRemoteLibraryPath();
+  } catch (error) {
+    const runtime = detectRuntime();
+    const expectedArtifact = getExpectedLocalArtifact();
+    throw new Error(
+      `Failed to load bundled FFI artifact (runtime=${runtime.runtime}, platform=${runtime.platform ?? 'unknown'}, arch=${runtime.arch ?? 'unknown'}, expected=${expectedArtifact}): ${String(error)}`,
+    );
   }
 }
 

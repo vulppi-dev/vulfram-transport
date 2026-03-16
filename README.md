@@ -8,3 +8,8 @@ Transport monorepo for Vulfram, separated from `@vulfram/engine`.
 - `@vulfram/transport-bun`: Bun FFI transport.
 - `@vulfram/transport-napi`: Node.js N-API transport.
 - `@vulfram/transport-browser`: browser transport (WASM).
+
+## Artifact loading policy
+
+- Transport packages load only bundled artifacts from their own `lib/` directories.
+- Runtime fallback download from R2/CDN is disabled.

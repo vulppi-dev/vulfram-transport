@@ -1,11 +1,5 @@
 import type { EngineTransport, EngineTransportFactory } from '@vulfram/transport-types';
-import {
-  VULFRAM_R2_DEFAULT_BASE_URL,
-  buildArtifactUrl,
-  parsePackageArtifactTarget,
-} from '@vulfram/transport-types';
-
-import pkg from '../package.json' with { type: 'json' };
+import { detectRuntime } from '@vulfram/transport-types';
 
 export type InitInput = unknown | Promise<unknown>;
 
@@ -31,38 +25,24 @@ type WasmBindings = {
   ) => number;
 };
 
-const packageVersion = (pkg as { version?: string }).version ?? '0.0.0';
-const { channel, artifactVersion } = parsePackageArtifactTarget(packageVersion);
-
 let initialized = false;
 let bindings: WasmBindings | null = null;
-
-function resolveBrowserArtifactUrl(artifact: string): string {
-  return buildArtifactUrl({
-    baseUrl: VULFRAM_R2_DEFAULT_BASE_URL,
-    channel,
-    artifactVersion,
-    binding: 'wasm',
-    platform: 'browser',
-    artifact,
-  });
-}
 
 async function loadBindings(): Promise<WasmBindings> {
   if (bindings) return bindings;
 
+  const localModulePath = '../lib/vulfram_core.js';
+
   try {
-    const localModulePath = '../lib/vulfram_core.js';
     bindings = (await import(
       /* @vite-ignore */ localModulePath
     )) as WasmBindings;
     return bindings;
-  } catch {
-    const remoteModule = resolveBrowserArtifactUrl('vulfram_core.js');
-    bindings = (await import(
-      /* @vite-ignore */ remoteModule
-    )) as WasmBindings;
-    return bindings;
+  } catch (error) {
+    const runtime = detectRuntime();
+    throw new Error(
+      `Failed to load browser transport module (runtime=${runtime.runtime}, platform=${runtime.platform ?? 'unknown'}, arch=${runtime.arch ?? 'unknown'}, expected=${localModulePath}): ${String(error)}`,
+    );
   }
 }
 
@@ -93,12 +73,12 @@ export async function initBrowserTransport(
   try {
     await wasm.default(moduleOrPath);
   } catch (error) {
-    if (moduleOrPath !== undefined) {
-      throw error;
-    }
-
-    const fallbackWasmUrl = resolveBrowserArtifactUrl('vulfram_core_bg.wasm');
-    await wasm.default(fallbackWasmUrl);
+    const runtime = detectRuntime();
+    const expectedArtifact =
+      moduleOrPath === undefined ? '../lib/vulfram_core_bg.wasm' : 'custom-init-input';
+    throw new Error(
+      `Failed to initialize browser transport (runtime=${runtime.runtime}, platform=${runtime.platform ?? 'unknown'}, arch=${runtime.arch ?? 'unknown'}, expected=${expectedArtifact}): ${String(error)}`,
+    );
   }
 
   initialized = true;
