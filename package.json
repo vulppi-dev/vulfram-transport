@@ -6,9 +6,11 @@
   ],
   "scripts": {
     "artifacts": "bun scripts/artifacts.ts",
-    "version": "bun scripts/set-transport-version.ts"
+    "version": "bun scripts/set-transport-version.ts",
+    "core-version": "bun scripts/core-version.ts"
   },
   "devDependencies": {
+    "@msgpack/msgpack": "^3.1.3",
     "@types/bun": "^1.3.10"
   }
 }

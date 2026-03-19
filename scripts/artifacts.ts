@@ -1,6 +1,5 @@
 import { createHash } from 'crypto';
-import { existsSync } from 'fs';
-import { mkdir, readFile, writeFile } from 'fs/promises';
+import { mkdir, readFile, readdir, rm, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
 import {
   VULFRAM_R2_DEFAULT_BASE_URL,
@@ -41,6 +40,16 @@ async function ensureDir(path: string): Promise<void> {
 
 async function ensureParent(path: string): Promise<void> {
   await ensureDir(dirname(path));
+}
+
+async function cleanDirectory(path: string): Promise<void> {
+  await ensureDir(path);
+  const entries = await readdir(path);
+  await Promise.all(
+    entries
+      .filter((entry) => entry !== '.gitkeep')
+      .map((entry) => rm(join(path, entry), { recursive: true, force: true })),
+  );
 }
 
 async function sha256File(path: string): Promise<string> {
@@ -91,8 +100,6 @@ async function ensureArtifact(config: {
   baseUrl: string;
   packageVersion: string;
 }): Promise<void> {
-  if (existsSync(config.destination)) return;
-
   const { channel, artifactVersion } = parsePackageArtifactTarget(
     config.packageVersion,
   );
@@ -132,6 +139,12 @@ async function main(): Promise<void> {
     'vulfram_core_bg.wasm',
     'vulfram_core_bg.wasm.d.ts',
   ] as const;
+
+  await Promise.all([
+    cleanDirectory(join(rootDir, 'packages', 'transport-bun', 'lib')),
+    cleanDirectory(join(rootDir, 'packages', 'transport-napi', 'lib')),
+    cleanDirectory(join(rootDir, 'packages', 'transport-browser', 'lib')),
+  ]);
 
   const tasks: Array<Promise<void>> = [];
 
